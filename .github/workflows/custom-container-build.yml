@@ -1,0 +1,279 @@
+name: 'PFM-Custom-Container-Build'
+
+on:
+  workflow_call:
+    inputs:
+      # --- Build (容器编译阶段) 变量 ---
+      build_checkout_ref:
+        description: '检出代码的分支/标签/SHA (默认: workflow)'
+        required: false
+        type: string
+        default: 'workflow'
+      build_versions:
+        description: '构建的镜像基础版本标签 (JSON字符串数组, 默认 ["latest"])'
+        required: false
+        type: string
+        default: '["latest"]'
+      build_tag_name:
+        description: '获取源码版本的变量名 (例如 LATEST_TAG)'
+        required: false
+        type: string
+        default: 'LATEST_TAG'
+      build_use_tag:
+        description: '是否启用源码tag标记'
+        required: false
+        type: boolean
+        default: true
+      build_dockerfile:
+        description: 'Dockerfile'
+        required: false
+        type: string
+        default: 'Dockerfile.dockerfile'
+      build_image_name:
+        description: '镜像名称 (为空则默认使用小写仓库名)'
+        required: false
+        type: string
+        default: ''
+
+      # --- Dispatch (下级仓库触发阶段) 变量 ---
+      dispatch_token_name:
+        description: '触发使用的 Secret Token 名称'
+        required: false
+        type: string
+        default: 'SYNC_TOKEN'
+      dispatch_event_type:
+        description: '触发事件类型'
+        required: false
+        type: string
+        default: 'pfm-build-event'
+      dispatch_repos:
+        description: '下级仓库 (JSON字符串数组)。留空或设为 "[]" 则跳过此步骤'
+        required: false
+        type: string
+        default: ''
+
+      # --- Clean (清理阶段) 变量 ---
+      clean_keep_versions:
+        description: '保留的镜像版本数量'
+        required: false
+        type: number
+        default: 30
+
+      # --- Source (源码拉取) 变量 ---
+      build_pull_source:
+        description: '启用source拉取'
+        required: false
+        type: boolean
+        default: true
+      build_pull_ref:
+        description: '拉取的标签'
+        required: false
+        type: string
+        default: ''
+
+permissions:
+  contents: read
+  packages: write
+
+jobs:
+  Custom-Container-Build:
+    name: '容器编译 [${{ matrix.version }} - ${{ matrix.target.platform }}]'
+    strategy:
+      fail-fast: false 
+      matrix:
+        version: ${{ fromJson(inputs.build_versions || '["latest"]') }}
+        target:
+          - platform: linux/amd64
+            os: ubuntu-latest
+          - platform: linux/arm64
+            os: ubuntu-24.04-arm
+    runs-on: ${{ matrix.target.os }}
+    timeout-minutes: 120
+    outputs:
+      image_name: ${{ steps.work_env.outputs.image_name }}
+    steps:
+      - name: '环境变量'
+        id: work_env
+        run: |
+          # 提取并格式化所需变量
+          REPO_LOWER="${{ github.event.repository.name }}"
+          REPO_LOWER="${REPO_LOWER,,}"
+          FINAL_NAME="${{ inputs.build_image_name }}"
+          FINAL_NAME="${FINAL_NAME:-$REPO_LOWER}"
+          PLATFORM="${{ matrix.target.platform }}"
+          
+          # 写入 Outputs 和 Env
+          echo "image_name=${FINAL_NAME}" >> "$GITHUB_OUTPUT"
+          echo "IMAGE_NAME=${FINAL_NAME}" >> "$GITHUB_ENV"
+          echo "PLATFORM_PAIR=${PLATFORM//\//-}" >> "$GITHUB_ENV"
+          echo "ARCH=${PLATFORM#*/}" >> "$GITHUB_ENV"
+          echo "GH=${{ vars.GHCR_REPO }}/${FINAL_NAME}" >> "$GITHUB_ENV"
+          echo "CPU_ARCH=$(arch)" >> "$GITHUB_ENV"
+
+      - name: '检出分支'
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ inputs.build_checkout_ref }}
+          persist-credentials: false
+          fetch-depth: 1
+
+      - name: 'Source'
+        if: ${{ inputs.build_pull_source == true }}
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ inputs.build_pull_ref || (inputs.build_use_tag && (vars[inputs.build_tag_name] || 'main')) || 'main' }}
+          submodules: recursive
+          fetch-depth: 1
+          path: containers/source-src
+
+      - name: '设置容器编译工具'
+        uses: docker/setup-buildx-action@v3
+        with:
+          version: latest
+          cache-binary: false
+          cleanup: true
+          platforms: ${{ matrix.target.platform }}
+          buildkitd-config-inline: |
+            [worker.oci]
+              max-parallelism = 4
+            [[worker.oci.gcpolicy]]
+              keepBytes = 10737418240 # 10GB
+              keepDuration = 604800   # 7天未使用的缓存优先清理
+          driver-opts: |
+            network=host
+
+      - name: '登录GHCR'
+        uses: docker/login-action@v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.repository_owner }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: '容器meta'
+        id: meta
+        uses: docker/metadata-action@v5
+        with:
+          images: |
+            ${{ env.GH }}
+          tags: |
+            type=raw,value=${{ matrix.version }}-${{ env.ARCH }},enable=true
+          labels: |
+            org.opencontainers.image.title=${{ env.IMAGE_NAME }}
+            org.opencontainers.image.description=PFM-PowerForMe container - ${{ env.IMAGE_NAME }}
+            org.opencontainers.image.vendor=PFM
+            org.opencontainers.image.authors=PFM
+
+      - name: '编译并发布'
+        id: build
+        uses: docker/build-push-action@v6
+        env:
+          DOCKER_BUILD_RECORD_UPLOAD: false
+          DOCKER_BUILD_SUMMARY: false
+        with:
+          platforms: ${{ matrix.target.platform }}
+          cache-from: type=gha,scope=${{ env.IMAGE_NAME }}-${{ env.ARCH }}
+          cache-to: type=gha,mode=max,scope=${{ env.IMAGE_NAME }}-${{ env.ARCH }}
+          provenance: false
+          context: containers
+          file: containers/${{ inputs.build_dockerfile }}
+          labels: ${{ steps.meta.outputs.labels }}
+          outputs: |
+            type=image,name=${{ env.GH }},push-by-digest=true,name-canonical=true,push=true
+          build-args: |
+            REPO=${{ github.server_url }}/${{ github.repository }}.git
+            ARCH=${{ env.ARCH }}
+            CPU_ARCH=${{ env.CPU_ARCH }}
+            IMAGE_VERSION=${{ matrix.version }}
+            ${{ inputs.build_use_tag && format('TAG={0}', vars[inputs.build_tag_name]) || '' }}
+
+      - name: '导出 digest'
+        run: |
+          mkdir -p ${{ runner.temp }}/digests
+          DIGEST="${{ steps.build.outputs.digest }}"
+          touch "${{ runner.temp }}/digests/${DIGEST#sha256:}"
+
+      - name: '上传 artifact'
+        uses: actions/upload-artifact@v4
+        with:
+          name: digest-${{ matrix.version }}-${{ env.PLATFORM_PAIR }}
+          path: ${{ runner.temp }}/digests/*
+          if-no-files-found: error
+          retention-days: 1
+
+  Merge-Container:
+    name: '容器合并 [${{ matrix.version }}]'
+    needs: Custom-Container-Build
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        version: ${{ fromJson(inputs.build_versions || '["latest"]') }}
+    env:
+      GH: ${{ vars.GHCR_REPO }}/${{ needs.Custom-Container-Build.outputs.image_name }}
+    steps:
+      - name: '下载 digests'
+        uses: actions/download-artifact@v4
+        with:
+          path: ${{ runner.temp }}/digests
+          pattern: digest-${{ matrix.version }}-*
+          merge-multiple: true
+
+      - name: '设置容器编译工具'
+        uses: docker/setup-buildx-action@v3
+
+      - name: '登录GHCR'
+        uses: docker/login-action@v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.repository_owner }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: '创建并发布多架构 manifest'
+        working-directory: ${{ runner.temp }}/digests
+        run: |
+          IMAGE_NAME="${{ needs.Custom-Container-Build.outputs.image_name }}"
+          DESC="PFM-PowerForMe container - ${IMAGE_NAME} (${{ matrix.version }})"
+          
+          docker buildx imagetools create \
+            --annotation "index:org.opencontainers.image.description=${DESC}" \
+            --annotation "index:org.opencontainers.image.authors=PFM" \
+            --annotation "index:org.opencontainers.image.vendor=PFM" \
+            --annotation "index:org.opencontainers.image.licenses=MIT" \
+            -t ${{ env.GH }}:${{ matrix.version }} \
+            $(printf '${{ env.GH }}@sha256:%s ' *)
+           
+      - name: '检查容器'
+        run: |
+          docker buildx imagetools inspect ${{ env.GH }}:${{ matrix.version }}
+
+  Repo-Dispatch:
+    name: '触发下级仓库事件'
+    needs: [Custom-Container-Build, Merge-Container]
+    if: ${{ inputs.dispatch_repos != '' && inputs.dispatch_repos != '[]' }}
+    strategy:
+      matrix:
+        repo: ${{ fromJson(inputs.dispatch_repos || '[]') }}
+    runs-on: ubuntu-slim
+    steps:
+      - name: "Repository Dispatch"
+        uses: PFM-PowerForMe/PFM-Action-RepoDispatch@main
+        if: github.event_name != 'pull_request' && success()
+        with:
+          token: ${{ secrets[inputs.dispatch_token_name] }}
+          repository: ${{ matrix.repo }}
+          event-type: ${{ inputs.dispatch_event_type }}
+
+  Clean-Container:
+    name: 'GHCR清理'
+    needs: [Custom-Container-Build, Merge-Container]
+    runs-on: ubuntu-slim
+    env:
+      IMAGE_NAME: ${{ needs.Custom-Container-Build.outputs.image_name }}
+    steps:
+      - name: '清理GHCR容器镜像的冗余层'
+        uses: actions/delete-package-versions@v5
+        with: 
+          package-name: ${{ env.IMAGE_NAME }}
+          package-type: 'container'
+          min-versions-to-keep: ${{ inputs.clean_keep_versions }}
+          delete-only-untagged-versions: 'true'

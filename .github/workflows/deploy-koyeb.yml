@@ -1,0 +1,19 @@
+name: 'Deploy-to-Koyeb'
+on:
+  workflow_call:
+    secrets:
+      KOYEB_TOKEN:
+        description: 'The secret key for Render deploy hook'
+        required: true
+
+jobs:
+  deploy:
+    name: 'Koyeb 部署'
+    runs-on: ubuntu-slim
+    steps:
+      - name: '安装 Koyeb CLI'
+        uses: koyeb-community/koyeb-actions@v2
+        with:
+          api_token: "${{ secrets.KOYEB_TOKEN }}"
+      - name: '部署到 Koyeb'
+        run: koyeb service redeploy ${{ vars.KOYEB_SERVICE }}

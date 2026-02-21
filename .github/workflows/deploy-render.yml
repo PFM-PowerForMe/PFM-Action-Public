@@ -1,0 +1,31 @@
+name: 'Render Deploy Call'
+
+on:
+  workflow_call:
+    secrets:
+      RENDER_DEPLOY_KEY:
+        description: 'The secret key for Render deploy hook'
+        required: true
+
+jobs:
+  deploy:
+    runs-on: ubuntu-slim
+    steps:
+      - name: Trigger Render Deploy
+        shell: bash
+        run: |
+          HOOK_DATA="${{ secrets.RENDER_DEPLOY_KEY }}"
+
+          echo "🚀 Triggering Render deployment..."
+          RESPONSE=$(curl -s -w "\n%{http_code}" -X POST "https://api.render.com/deploy/${HOOK_DATA}")
+
+          HTTP_STATUS=$(echo "$RESPONSE" | tail -n 1)
+          BODY=$(echo "$RESPONSE" | head -n -1)
+
+          if [ "$HTTP_STATUS" -eq 201 ] || [ "$HTTP_STATUS" -eq 200 ]; then
+            echo "✅ Deployment triggered successfully!"
+          else
+            echo "❌ Failed. Status: $HTTP_STATUS"
+            echo "Response: $BODY"
+            exit 1
+          fi
