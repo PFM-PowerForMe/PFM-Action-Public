@@ -25,7 +25,7 @@ jobs:
   Sync-Container:
     name: '同步 [${{ matrix.version }}] -> ${{ matrix.target.registry }}'
     runs-on: ubuntu-slim
-    timeout-minutes: 60
+    timeout-minutes: 120
     strategy:
       fail-fast: false
       matrix:
