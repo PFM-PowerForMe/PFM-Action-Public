@@ -60,7 +60,9 @@ jobs:
           
           echo "🚀 正在无损同步: $SOURCE_URL -> $DEST_URL"
 
-          skopeo copy --all \
+          skopeo copy --all --debug \
+            --retry-times 3 \
+            --command-timeout 15m \
             --src-creds="${{ github.actor }}:${{ secrets.GITHUB_TOKEN }}" \
             --dest-creds="${DEST_USER}:${DEST_PASS}" \
             "$SOURCE_URL" "$DEST_URL"
