@@ -49,9 +49,16 @@ jobs:
             exit 1
           fi
 
-          SOURCE_URL="docker://${{ inputs.source_image }}:${{ matrix.version }}"
-          DEST_URL="docker://${{ matrix.target.registry }}/${{ matrix.target.namespace }}:${{ matrix.version }}"
+          RAW_SOURCE="${{ inputs.source_image }}"
+          LOWER_SOURCE="${RAW_SOURCE,,}"
+          RAW_NAMESPACE="${{ matrix.target.namespace }}"
+          LOWER_NAMESPACE="${RAW_NAMESPACE,,}"
+
+          SOURCE_URL="docker://${LOWER_SOURCE}:${{ matrix.version }}"
+          DEST_URL="docker://${{ matrix.target.registry }}/${LOWER_NAMESPACE}:${{ matrix.version }}"
+          
           echo "🚀 正在无损同步: $SOURCE_URL -> $DEST_URL"
+
           skopeo copy --all \
             --src-creds="${{ github.actor }}:${{ secrets.GITHUB_TOKEN }}" \
             --dest-creds="${DEST_USER}:${DEST_PASS}" \
