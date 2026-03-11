@@ -1,0 +1,53 @@
+name: 'PFM-Container-Sync'
+
+on:
+  workflow_call:
+    inputs:
+      source_image:
+        description: '源镜像完整路径 (不含tag, 例如 ghcr.io/pfm/container)'
+        required: true
+        type: string
+      sync_versions:
+        description: '需要同步的版本标签 (JSON字符串数组, 默认 ["latest"])'
+        required: false
+        type: string
+        default: '["latest"]'
+      target_registries:
+        description: '目标仓库配置 (JSON格式对象数组)'
+        required: true
+        type: string
+
+permissions:
+  contents: read
+  packages: read
+
+jobs:
+  Sync-Container:
+    name: '同步 [${{ matrix.version }}] -> ${{ matrix.target.registry }}'
+    runs-on: ubuntu-slim
+    strategy:
+      fail-fast: false
+      matrix:
+        version: ${{ fromJson(inputs.sync_versions || '["latest"]') }}
+        target: ${{ fromJson(inputs.target_registries) }}
+    steps:
+      - name: '检查 Skopeo 搬运工具'
+        run: skopeo --version
+
+      - name: '执行镜像无损同步 (Skopeo Copy)'
+        run: |
+          DEST_USER="${{ secrets[matrix.target.username_secret] }}"
+          DEST_PASS="${{ secrets[matrix.target.password_secret] }}"
+          
+          if [ -z "$DEST_USER" ] || [ -z "$DEST_PASS" ]; then
+            echo "::error::未找到目标仓库 [${{ matrix.target.registry }}] 的凭证，请检查 Secrets 配置或变量名！"
+            exit 1
+          fi
+
+          SOURCE_URL="docker://${{ inputs.source_image }}:${{ matrix.version }}"
+          DEST_URL="docker://${{ matrix.target.registry }}/${{ matrix.target.namespace }}:${{ matrix.version }}"
+          echo "🚀 正在无损同步: $SOURCE_URL -> $DEST_URL"
+          skopeo copy --all \
+            --src-creds="${{ github.actor }}:${{ secrets.GITHUB_TOKEN }}" \
+            --dest-creds="${DEST_USER}:${DEST_PASS}" \
+            "$SOURCE_URL" "$DEST_URL"
