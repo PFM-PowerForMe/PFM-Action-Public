@@ -31,6 +31,11 @@ jobs:
         version: ${{ fromJson(inputs.sync_versions || '["latest"]') }}
         target: ${{ fromJson(inputs.target_registries) }}
     steps:
+      - name: '安装 Skopeo 搬运工具'
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y skopeo
+
       - name: '检查 Skopeo 搬运工具'
         run: skopeo --version
 
