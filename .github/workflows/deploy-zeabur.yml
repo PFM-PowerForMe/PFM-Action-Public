@@ -2,9 +2,6 @@ name: 'Deploy-to-Zeabur'
 
 on:
   workflow_call:
-    inputs:
-      
-    # 定义敏感的凭证参数
     secrets:
       ZEABUR_TOKEN:
         description: 'Zeabur Personal Access Token'
