@@ -1,0 +1,36 @@
+name: 'Deploy-to-Zeabur'
+
+on:
+  workflow_call:
+    inputs:
+      
+    # 定义敏感的凭证参数
+    secrets:
+      ZEABUR_TOKEN:
+        description: 'Zeabur Personal Access Token'
+        required: true
+      PROJECT_ID:
+        description: 'Zeabur Project ID'
+        required: true
+      SERVICE_ID:
+        description: 'Zeabur Service ID'
+        required: true
+
+jobs:
+  deploy:
+    name: 'Zeabur 部署'
+    runs-on: ubuntu-slim
+    steps:
+      - name: '通过 Zeabur CLI 触发重新部署'
+        env:
+          ZEABUR_TOKEN: ${{ secrets.ZEABUR_TOKEN }}
+          PROJECT_ID: ${{ secrets.PROJECT_ID }}
+          SERVICE_ID: ${{ secrets.SERVICE_ID }}
+        run: |
+          echo "🚀 开始登录 Zeabur..."
+          npx -y zeabur auth login --token "$ZEABUR_TOKEN"
+          echo "📂 切换到指定项目上下文 (Project ID: $PROJECT_ID)..."
+          npx -y zeabur context set project --yes --id "$PROJECT_ID"
+          echo "🔄 正在触发服务重启并拉取新镜像 (Service ID: $SERVICE_ID)..."
+          npx -y zeabur service restart --yes --id "$SERVICE_ID"
+          echo "✅ Zeabur 部署指令下发成功！"
