@@ -111,7 +111,7 @@ jobs:
           echo "CPU_ARCH=$(arch)" >> "$GITHUB_ENV"
 
       - name: '检出分支'
-        uses: actions/checkout@v4
+        uses: actions/checkout@v7
         with:
           ref: ${{ inputs.build_checkout_ref }}
           persist-credentials: false
@@ -119,7 +119,7 @@ jobs:
 
       - name: 'Source'
         if: ${{ inputs.build_pull_source == true }}
-        uses: actions/checkout@v4
+        uses: actions/checkout@v7
         with:
           ref: ${{ inputs.build_pull_ref || (inputs.build_use_tag && (vars[inputs.build_tag_name] || 'main')) || 'main' }}
           submodules: recursive
@@ -127,7 +127,7 @@ jobs:
           path: containers/source-src
 
       - name: '设置容器编译工具'
-        uses: docker/setup-buildx-action@v3
+        uses: docker/setup-buildx-action@v4
         with:
           version: latest
           cache-binary: false
@@ -143,7 +143,7 @@ jobs:
             network=host
 
       - name: '登录GHCR'
-        uses: docker/login-action@v3
+        uses: docker/login-action@v4
         with:
           registry: ghcr.io
           username: ${{ github.repository_owner }}
@@ -151,7 +151,7 @@ jobs:
 
       - name: '容器meta'
         id: meta
-        uses: docker/metadata-action@v5
+        uses: docker/metadata-action@v6
         with:
           images: |
             ${{ env.GH }}
@@ -165,7 +165,7 @@ jobs:
 
       - name: '编译并发布'
         id: build
-        uses: docker/build-push-action@v6
+        uses: docker/build-push-action@v7
         env:
           DOCKER_BUILD_RECORD_UPLOAD: false
           DOCKER_BUILD_SUMMARY: false
@@ -193,7 +193,7 @@ jobs:
           touch "${{ runner.temp }}/digests/${DIGEST#sha256:}"
 
       - name: '上传 artifact'
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: digest-${{ matrix.version }}-${{ env.PLATFORM_PAIR }}
           path: ${{ runner.temp }}/digests/*
@@ -212,17 +212,17 @@ jobs:
       GH: ${{ vars.GHCR_REPO }}/${{ needs.Custom-Container-Build.outputs.image_name }}
     steps:
       - name: '下载 digests'
-        uses: actions/download-artifact@v4
+        uses: actions/download-artifact@v8
         with:
           path: ${{ runner.temp }}/digests
           pattern: digest-${{ matrix.version }}-*
           merge-multiple: true
 
       - name: '设置容器编译工具'
-        uses: docker/setup-buildx-action@v3
+        uses: docker/setup-buildx-action@v4
 
       - name: '登录GHCR'
-        uses: docker/login-action@v3
+        uses: docker/login-action@v4
         with:
           registry: ghcr.io
           username: ${{ github.repository_owner }}
