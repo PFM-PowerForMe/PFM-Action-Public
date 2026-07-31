@@ -29,6 +29,11 @@ on:
         required: false
         type: string
         default: 'Dockerfile.dockerfile'
+      build_docker_content:
+        description: '上下文目录'
+        required: false
+        type: string
+        default: 'containers'
       build_image_name:
         description: '镜像名称 (为空则默认使用小写仓库名)'
         required: false
@@ -174,7 +179,7 @@ jobs:
           cache-from: type=gha,scope=${{ env.IMAGE_NAME }}-${{ env.ARCH }}
           cache-to: type=gha,mode=max,scope=${{ env.IMAGE_NAME }}-${{ env.ARCH }}
           provenance: false
-          context: containers
+          context: ${{ inputs.build_docker_content }}
           file: containers/${{ inputs.build_dockerfile }}
           labels: ${{ steps.meta.outputs.labels }}
           outputs: |
