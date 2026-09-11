@@ -79,7 +79,7 @@ on:
         description: '拉取使用的 Secret Token 名称'
         required: false
         type: string
-        default: "github.token"
+        default: ''
 
 permissions:
   contents: read
@@ -126,7 +126,7 @@ jobs:
           ref: ${{ inputs.build_checkout_ref }}
           submodules: true
           fetch-depth: 1
-          token: ${{ secrets[inputs.pull_token_name] || github.token }}
+          token: ${{ inputs.pull_token_name != '' && secrets[inputs.pull_token_name] || github.token }}
 
       - name: 'Source'
         if: ${{ inputs.build_pull_source == true }}
@@ -136,7 +136,7 @@ jobs:
           submodules: true
           fetch-depth: 1
           path: containers/source-src
-          token: ${{ secrets[inputs.pull_token_name] || github.token }}
+          token: ${{ inputs.pull_token_name != '' && secrets[inputs.pull_token_name] || github.token }}
 
       - name: '设置容器编译工具'
         uses: docker/setup-buildx-action@v4
