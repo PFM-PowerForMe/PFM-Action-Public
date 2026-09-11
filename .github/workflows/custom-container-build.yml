@@ -80,6 +80,11 @@ on:
         required: false
         type: string
         default: ''
+      pull_ssh_key:
+        description: '拉取使用的 SSH Key 名称'
+        required: false
+        type: string
+        default: ''
 
 permissions:
   contents: read
@@ -124,6 +129,7 @@ jobs:
         uses: actions/checkout@v7
         with:
           ref: ${{ inputs.build_checkout_ref }}
+          ssh-key: ${{ inputs.pull_ssh_key != '' && secrets[inputs.pull_ssh_key] || '' }}
           submodules: true
           fetch-depth: 1
           token: ${{ inputs.pull_token_name != '' && secrets[inputs.pull_token_name] || github.token }}
@@ -133,6 +139,7 @@ jobs:
         uses: actions/checkout@v7
         with:
           ref: ${{ inputs.build_pull_ref || (inputs.build_use_tag && (vars[inputs.build_tag_name] || 'main')) || 'main' }}
+          ssh-key: ${{ inputs.pull_ssh_key != '' && secrets[inputs.pull_ssh_key] || '' }}
           submodules: true
           fetch-depth: 1
           path: containers/source-src
