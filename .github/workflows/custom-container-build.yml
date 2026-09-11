@@ -79,7 +79,7 @@ on:
         description: '拉取使用的 Secret Token 名称'
         required: false
         type: string
-        default: ${{ github.token }}
+        default: "github.token"
 
 permissions:
   contents: read
